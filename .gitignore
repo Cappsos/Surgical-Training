@@ -1,1 +1,7 @@
 videos/
+datasets/
+output_segmented_pinze/
+output_segmented_pinze_modified/
+yolov8x-seg.pt
+yolo11n.pt
+segmentation/

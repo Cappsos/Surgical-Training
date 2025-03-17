@@ -1,0 +1,157 @@
+import os
+import glob
+import numpy as np
+from shapely.geometry import Polygon
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+import logging
+
+# Configuration
+SEGMENTATION_FOLDER = '/root/surgical_training/project/polygons_coord'  # Replace with your folder path
+FILE_PATTERN = '*.txt'
+LABELS = [0, 1]  # Only two labels to track
+DISTANCE_THRESHOLD = 50  # Not used in this approach but kept for reference
+OUTPUT_LOG = 'tracking_warnings.log'
+
+# Setup Logging
+logging.basicConfig(
+    filename=OUTPUT_LOG,
+    filemode='w',
+    level=logging.WARNING,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+
+# Helper Functions
+def parse_polygon_line(line, frame_idx, line_num):
+    parts = line.strip().split()
+    if len(parts) < 3:
+        logging.warning(f"Frame {frame_idx}, Line {line_num} has insufficient data.")
+        return None
+    try:
+        label = int(parts[0])
+        if label not in LABELS:
+            logging.warning(f"Frame {frame_idx}, Line {line_num} has unknown label {label}. Skipping.")
+            return None
+        coords = list(map(float, parts[1:]))
+        if len(coords) % 2 != 0:
+            logging.warning(f"Frame {frame_idx}, Line {line_num} has an odd number of coordinates.")
+            return None
+        points = [(coords[i], coords[i+1]) for i in range(0, len(coords), 2)]
+        return label, points
+    except ValueError as e:
+        logging.warning(f"Frame {frame_idx}, Line {line_num} has invalid data. Error: {e}")
+        return None
+
+def compute_centroid(points, frame_idx, line_num):
+    if len(points) < 3:
+        logging.warning(f"Frame {frame_idx}, Line {line_num} has fewer than 3 points. Skipping.")
+        return None
+    # Automatically close the polygon if not already closed
+    if points[0] != points[-1]:
+        points.append(points[0])
+    try:
+        poly = Polygon(points)
+        if not poly.is_valid:
+            poly = poly.buffer(0)
+            if not poly.is_valid:
+                logging.warning(f"Frame {frame_idx}, Line {line_num} resulted in an invalid polygon after buffering.")
+                return None
+        return poly.centroid.x, poly.centroid.y
+    except Exception as e:
+        logging.warning(f"Frame {frame_idx}, Line {line_num} failed to create a polygon. Error: {e}")
+        return None
+
+def load_frame(file_path, frame_idx):
+    centroids_per_label = {label: [] for label in LABELS}
+    with open(file_path, 'r') as f:
+        for line_num, line in enumerate(f, 1):
+            parsed = parse_polygon_line(line, frame_idx, line_num)
+            if parsed is None:
+                continue
+            label, points = parsed
+            centroid = compute_centroid(points.copy(), frame_idx, line_num)
+            if centroid is not None:
+                centroids_per_label[label].append(centroid)
+    return centroids_per_label
+
+def average_centroids(centroids):
+    if not centroids:
+        return None
+    centroids_array = np.array(centroids)
+    avg_x = np.mean(centroids_array[:, 0])
+    avg_y = np.mean(centroids_array[:, 1])
+    return (avg_x, avg_y)
+
+def main():
+    # Get sorted list of frame files
+    frame_files = sorted(glob.glob(os.path.join(SEGMENTATION_FOLDER, FILE_PATTERN)))
+    if not frame_files:
+        print("No segmentation files found.")
+        return
+
+    # Initialize trajectories for each label
+    trajectories = {label: [] for label in LABELS}
+    last_known_positions = {label: None for label in LABELS}
+
+    for frame_idx, frame_file in enumerate(frame_files):
+        centroids_per_label = load_frame(frame_file, frame_idx)
+        for label in LABELS:
+            centroids = centroids_per_label[label]
+            if centroids:
+                # If multiple centroids (split masks), average them
+                if len(centroids) > 1:
+                    avg_centroid = average_centroids(centroids)
+                    trajectories[label].append((avg_centroid[0], avg_centroid[1], frame_idx))
+                    last_known_positions[label] = avg_centroid
+                else:
+                    # Single centroid
+                    centroid = centroids[0]
+                    trajectories[label].append((centroid[0], centroid[1], frame_idx))
+                    last_known_positions[label] = centroid
+            else:
+                # No detection for this label in this frame
+                if last_known_positions[label] is not None:
+                    # Assume object stayed in last known position
+                    trajectories[label].append((last_known_positions[label][0],
+                                                last_known_positions[label][1],
+                                                frame_idx))
+                else:
+                    # No previous position, append None or skip
+                    trajectories[label].append((None, None, frame_idx))
+                    logging.warning(f"Frame {frame_idx}: Label {label} not detected and no previous position to retain.")
+
+        print(f"Processed frame {frame_idx + 1}/{len(frame_files)}")
+
+    # Remove frames where position is None (if you prefer to skip them)
+    # Alternatively, you can handle them as you see fit in the visualization
+    for label in LABELS:
+        # Replace None positions with the last known valid position
+        last_pos = None
+        for idx, (x, y, frame) in enumerate(trajectories[label]):
+            if x is not None and y is not None:
+                last_pos = (x, y)
+            else:
+                trajectories[label][idx] = (last_pos[0], last_pos[1], frame) if last_pos else (0, 0, frame)
+
+    # Prepare data for plotting
+    fig = plt.figure(figsize=(12, 8))
+    ax = fig.add_subplot(111, projection='3d')
+
+    colors = {0: 'blue', 1: 'green'}  # Assign distinct colors to each label
+
+    for label in LABELS:
+        traj = trajectories[label]
+        traj = np.array(traj)
+        ax.plot(traj[:, 0], traj[:, 1], traj[:, 2], label=f'Label {label}', color=colors.get(label, 'black'))
+
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Frame')
+    ax.set_title('Object Trajectories')
+    ax.legend()
+    plt.show()
+
+    print(f"Tracking complete. Warnings (if any) are logged in '{OUTPUT_LOG}'.")
+
+if __name__ == "__main__":
+    main()
