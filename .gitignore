@@ -5,3 +5,6 @@ output_segmented_pinze_modified/
 yolov8x-seg.pt
 yolo11n.pt
 segmentation/
+dataset_forceps_2
+dataset_forceps_3
+temp_dataset

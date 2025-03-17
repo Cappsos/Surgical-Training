@@ -27,8 +27,8 @@ def resize_and_pad(image, target_size):
 
 if __name__ == "__main__":
     # Input and output folders
-    input_folder = "/root/surgical_training/videos/IMG_1025_frames"  # Change as needed
-    output_folder = "/root/surgical_training/videos/IMG_1025_frames_resized"
+    input_folder = "/root/surgical_training/videos/PeP2_frames"  # Change as needed
+    output_folder = "/root/surgical_training/videos/PeP2_frames_resized"
     os.makedirs(output_folder, exist_ok=True)
 
     # Target size

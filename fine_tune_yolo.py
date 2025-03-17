@@ -43,9 +43,9 @@ if __name__ == "__main__":
     train_yolo(
         model_path='yolov8x-seg.pt',
         data_path='datasets/dataset.yaml',
-        epochs=5,
+        epochs=10,
         img_size=640,
-        batch_size=4,
+        batch_size=2,
         device=0,
         project='segmentation',
         name='yolov8-finetune',

@@ -88,7 +88,7 @@ if __name__ == "__main__":
         return inference_state
 
     # Example usage
-    points_array = np.array([[228, 319], [283, 346], [415, 417], [263, 337]], dtype=np.float32)
+    points_array = np.array([[182, 288], [206, 359], [239, 473], [255, 495]], dtype=np.float32)
     labels = np.array([1, 1, 1, 1], np.int32)  # `1` means positive click
     jpeg_folder = "videos/input_resized_forceps"
     
